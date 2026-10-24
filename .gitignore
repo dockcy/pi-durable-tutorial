@@ -1,0 +1,7 @@
+node_modules/
+*.sqlite
+*.db
+film/renders/
+film/review/
+film/audio/
+.DS_Store
