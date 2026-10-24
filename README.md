@@ -58,7 +58,9 @@ python3 -m http.server 8000      # 或者 npx serve .
 
 **方式三：部署成网站。** 这是一个纯静态网站（`index.html` + `assets/` + `course/`），样式和渲染库都从 CDN 加载（Pico CSS、marked、mermaid、highlight.js），不需要构建。
 
-- **GitHub Pages**：仓库里已经带了 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)。到仓库 *Settings → Pages*，把 *Source* 选成 *GitHub Actions*，推送到 `main` 就会自动发布。注意：**私有仓库**开 Pages 需要 GitHub 付费套餐（Pro / Team / Enterprise）；免费账号需要把仓库改成公开。
+- **GitHub Pages（最简单）**：到仓库 *Settings → Pages*，*Source* 选 *Deploy from a branch*，分支选 `main`、目录选 `/ (root)`，保存即可，不需要任何工作流。
+- **GitHub Pages（用 Actions）**：工作流文件放在 [`deploy/github-pages.yml`](deploy/github-pages.yml)（推送时用的令牌没有 `workflow` 权限，没法直接放进 `.github/workflows/`）。在 GitHub 网页上新建文件 `.github/workflows/pages.yml`，把它的内容粘进去，再把 *Source* 选成 *GitHub Actions*。
+- 注意：**私有仓库**开 Pages 需要 GitHub 付费套餐（Pro / Team / Enterprise）；免费账号需要把仓库改成公开。
 - **其他静态托管**（Vercel、Netlify、Cloudflare Pages 等）：把仓库根目录当作站点根目录即可，构建命令留空。
 
 ## 动手实验
