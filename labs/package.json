@@ -1,0 +1,27 @@
+{
+  "name": "pi-durable-tutorial-labs",
+  "private": true,
+  "type": "module",
+  "description": "pi-durable 教程配套实验。Node 24+ 可以直接运行 .ts 文件：node 01-chat.ts",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lab:01": "node 01-chat.ts",
+    "lab:02": "node 02-crash.ts first; node 02-crash.ts second",
+    "lab:03": "node 03-task.ts first; node 03-task.ts second",
+    "lab:04": "node 04-checkout.ts",
+    "lab:04b": "node 04b-saga.ts",
+    "lab:05": "node 05-inbox.ts",
+    "lab:06": "node 06-context.ts",
+    "lab:07": "node 07-doc.ts",
+    "lab:08": "node 08-sleep.ts",
+    "lab:09": "node 09-hook.ts",
+    "lab:10": "node 10-mini-durable.ts crash; node 10-mini-durable.ts"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "^1.4.0",
+    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-durable": "^1.4.0"
+  }
+}
