@@ -138,7 +138,11 @@ function decorate(root) {
       div.className = "mermaid";
       div.textContent = code.textContent;
       wrap.appendChild(div);
-      wrap.addEventListener("click", () => wrap.classList.toggle("zoom"));
+      wrap.tabIndex = 0;
+      wrap.setAttribute("role", "button");
+      wrap.setAttribute("aria-label", "全屏查看这张图");
+      wrap.addEventListener("click", () => openViewer(wrap));
+      wrap.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openViewer(wrap); } });
       pre.replaceWith(wrap);
       continue;
     }
@@ -260,5 +264,173 @@ async function show() {
   await renderMermaid(content);
 }
 
-window.addEventListener("hashchange", show);
+/* ---------- 侧边栏：可收起，记住上次的选择 ---------- */
+const NAV_KEY = "pi-durable-tutorial:nav-collapsed";
+function setNavCollapsed(collapsed) {
+  document.body.classList.toggle("nav-collapsed", collapsed);
+  const btn = $("#nav-toggle");
+  if (btn) {
+    btn.setAttribute("aria-expanded", String(!collapsed));
+    btn.title = collapsed ? "展开课程目录" : "收起课程目录";
+    btn.querySelector("span").textContent = collapsed ? "展开目录" : "收起目录";
+  }
+  localStorage.setItem(NAV_KEY, collapsed ? "1" : "0");
+}
+setNavCollapsed(localStorage.getItem(NAV_KEY) === "1");
+$("#nav-toggle")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("nav-collapsed")));
+
+/* ---------- 看大图：单独一层铺满窗口，滚轮 / 双指缩放，拖动平移 ---------- */
+let viewer = null;
+function openViewer(wrap) {
+  const svg = $("svg", wrap);
+  if (!svg || viewer) return;
+  const vb = svg.viewBox && svg.viewBox.baseVal;
+  const box = svg.getBoundingClientRect();
+  const w0 = vb && vb.width ? vb.width : box.width;
+  const h0 = vb && vb.height ? vb.height : box.height;
+  const pic = svg.cloneNode(true);
+  pic.removeAttribute("style");
+  pic.setAttribute("width", w0);
+  pic.setAttribute("height", h0);
+  pic.style.cssText = `width:${w0}px;height:${h0}px;max-width:none;display:block;`;
+
+  const el = document.createElement("div");
+  el.className = "viewer";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-label", "全屏查看图");
+  el.innerHTML = `
+    <div class="viewer-bar">
+      <span class="viewer-hint">滚轮或双指缩放 · 拖动平移 · 双击复位 · Esc 关闭</span>
+      <span class="viewer-tools">
+        <button type="button" data-act="out" title="缩小（-）">－</button>
+        <span class="viewer-zoom">100%</span>
+        <button type="button" data-act="in" title="放大（+）">＋</button>
+        <button type="button" data-act="fit" title="适应窗口（0）">适应窗口</button>
+        <button type="button" data-act="one" title="原始大小（1）">原始大小</button>
+        <button type="button" data-act="close" class="viewer-close" title="关闭（Esc）">× 关闭</button>
+      </span>
+    </div>
+    <div class="viewer-stage"><div class="viewer-canvas"></div></div>`;
+  const stage = $(".viewer-stage", el);
+  const canvas = $(".viewer-canvas", el);
+  const zoomLabel = $(".viewer-zoom", el);
+  canvas.appendChild(pic);
+  document.body.appendChild(el);
+  const prevOverflow = document.documentElement.style.overflow;
+  document.documentElement.style.overflow = "hidden";
+
+  let s = 1, x = 0, y = 0;
+  const cw = canvas.offsetWidth, ch = canvas.offsetHeight;
+  const clampS = (v) => Math.min(8, Math.max(0.1, v));
+  const apply = () => {
+    canvas.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    zoomLabel.textContent = `${Math.round(s * 100)}%`;
+  };
+  const center = (scale) => {
+    s = clampS(scale);
+    x = (stage.clientWidth - cw * s) / 2;
+    y = Math.max(16, (stage.clientHeight - ch * s) / 2);
+    apply();
+  };
+  const fitScale = () => Math.min(3, (stage.clientWidth - 48) / cw, (stage.clientHeight - 48) / ch);
+  const fit = () => center(fitScale());
+  // 手机竖屏上，很宽的图按宽度缩会小得看不清：先按高度放到能读的大小，从左边开始看，左右拖动
+  const start = () => {
+    const f = fitScale();
+    if (stage.clientWidth >= 700 || f >= 0.6) return fit();
+    s = clampS(Math.max(f, Math.min(1, (stage.clientHeight - 48) / ch)));
+    x = 12;
+    y = Math.max(12, (stage.clientHeight - ch * s) / 2);
+    apply();
+  };
+  const zoomAt = (mx, my, f) => {
+    const ns = clampS(s * f);
+    x = mx - (mx - x) * (ns / s);
+    y = my - (my - y) * (ns / s);
+    s = ns;
+    apply();
+  };
+  const zoomMid = (f) => zoomAt(stage.clientWidth / 2, stage.clientHeight / 2, f);
+  start();
+
+  // 拖动、双指缩放
+  const pts = new Map();
+  let moved = 0, pinch = null, downOnStage = false;
+  stage.addEventListener("pointerdown", (e) => {
+    downOnStage = e.target === stage; // 按下时就记住：按在图外的空白处，还是图上
+    stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    moved = 0;
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+    }
+    stage.classList.add("grabbing");
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (pts.size === 1) { x += dx; y += dy; apply(); }
+    else if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const r = stage.getBoundingClientRect();
+      if (pinch.d > 0) zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinch.d);
+      pinch.d = d;
+    }
+  });
+  const up = (e) => {
+    const wasTap = pts.size === 1 && moved < 5;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (!pts.size) stage.classList.remove("grabbing");
+    if (e.type === "pointerup" && wasTap && downOnStage) close(); // 点图外的空白处关闭
+  };
+  stage.addEventListener("pointerup", up);
+  stage.addEventListener("pointercancel", up);
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = stage.getBoundingClientRect();
+    const k = e.deltaMode === 1 ? 0.05 : 0.0015;
+    zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * k));
+  }, { passive: false });
+  stage.addEventListener("dblclick", (e) => { e.preventDefault(); fit(); });
+
+  const acts = {
+    in: () => zoomMid(1.25), out: () => zoomMid(0.8), fit,
+    one: () => center(1), close: () => close(),
+  };
+  $(".viewer-bar", el).addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (b) acts[b.dataset.act]();
+  });
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+    else if (e.key === "+" || e.key === "=") zoomMid(1.25);
+    else if (e.key === "-" || e.key === "_") zoomMid(0.8);
+    else if (e.key === "0") fit();
+    else if (e.key === "1") center(1);
+    else return;
+    e.preventDefault();
+  };
+  const onResize = () => fit();
+  document.addEventListener("keydown", onKey);
+  window.addEventListener("resize", onResize);
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", onResize);
+    document.documentElement.style.overflow = prevOverflow;
+    el.remove();
+    viewer = null;
+    wrap.focus({ preventScroll: true });
+  }
+  viewer = el;
+  $(".viewer-close", el).focus();
+}
+
+window.addEventListener("hashchange", () => { if (viewer) $(".viewer-close", viewer)?.click(); show(); });
 show();
