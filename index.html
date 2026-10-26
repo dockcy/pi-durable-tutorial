@@ -12,12 +12,13 @@
 </head>
 <body>
   <header class="topbar">
+    <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="sidebar" aria-expanded="true" title="收起课程目录"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3.5h12M2 8h12M2 12.5h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg><span>收起目录</span></button>
     <a class="brand" href="#/00-overview">📜 pi-durable 中文教程</a>
     <span class="tagline">断电也不丢的 AI 智能体底座 · 用寓言读懂设计与代码</span>
     <span class="progress" id="progress"></span>
   </header>
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <details class="mobile-nav" open>
         <summary>课程目录</summary>
         <nav id="nav" aria-label="课程目录"></nav>
